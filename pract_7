@@ -1,0 +1,95 @@
+import cv2
+import numpy as np
+from pyzbar.pyzbar import decode
+
+# Load the floor plan image
+image_path = r"floor_plan.jpg"
+image = cv2.imread(image_path)
+
+# Check if the image was loaded correctly
+if image is None:
+    print("Error: Unable to load image. Check the file path.")
+    exit()
+
+# Define predefined locations (approximate pixel coordinates on the map)
+locations = {
+    "A": (400, 200),  # Entry
+    "B": (700, 250),  # Kitchen
+    "C": (150, 400),  # Bedroom 1
+    "D": (600, 450)   # Dining Room
+}
+
+# Mark predefined locations on the map
+for label, (x, y) in locations.items():
+    cv2.circle(image, (x, y), 10, (0, 0, 255), -1)  # Red dot for location
+    cv2.putText(image, label, (x + 15, y - 15), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+# Function to detect and decode QR codes
+def detect_qr_code(frame):
+    qr_codes = decode(frame)
+    for qr in qr_codes:
+        data = qr.data.decode('utf-8')  # Extract QR code text
+        rect = qr.rect
+        x, y, w, h = rect.left, rect.top, rect.width, rect.height
+        
+        # Mark detected QR code with a green dot
+        cv2.circle(frame, (x + w // 2, y + h // 2), 10, (0, 255, 0), -1)
+        
+        # Draw an arrow pointing to the detected QR code
+        cv2.arrowedLine(frame, (x + w // 2, y + h // 2 - 30), (x + w // 2, y + h // 2), (0, 255, 0), 3, tipLength=0.3)
+
+        # Label the QR code
+        cv2.putText(frame, data, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        
+        if data in locations:
+            return data  # Return the detected location name
+    return None
+
+# Function to draw step-wise arrows for navigation on the map
+def draw_navigation_path(map_image, start, end, steps=10):
+    x1, y1 = start
+    x2, y2 = end
+
+    # Generate multiple points between start and end
+    for i in range(1, steps + 1):
+        px = int(x1 + (x2 - x1) * i / steps)
+        py = int(y1 + (y2 - y1) * i / steps)
+
+        # Draw an arrow between each small step
+        cv2.arrowedLine(map_image, (x1, y1), (px, py), (255, 0, 0), 4, tipLength=0.4)
+        x1, y1 = px, py  # Update start for next segment
+
+# Open webcam
+cap = cv2.VideoCapture(0)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    detected_location = detect_qr_code(frame)  # Scan for QR code
+
+    if detected_location:
+        print(f"Detected location: {detected_location}")
+
+        # Draw navigation path from Entry (A) to the detected location on the map
+        map_with_path = image.copy()
+        start_point = locations["A"]
+        end_point = locations[detected_location]
+
+        # Draw arrows at multiple steps for better visualization
+        draw_navigation_path(map_with_path, start_point, end_point, steps=7)
+
+        # Show the map with navigation path
+        cv2.imshow("Navigation Map", map_with_path)
+
+    else:
+        cv2.imshow("Navigation Map", image)
+
+    cv2.imshow("Webcam", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):  # Press 'q' to exit
+        break
+
+cap.release()
+cv2.destroyAllWindows()
